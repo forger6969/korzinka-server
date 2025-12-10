@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 require('dotenv').config();
-
+const bcrypt = require("bcrypt");
 const app = express();
 
 app.use(express.json());
@@ -22,16 +22,25 @@ mongoose.connect(process.env.MONGODB_URL)
     });
 
 // Схема пользователя
+// Схема пользователя
 const userSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
+    name: String,
+    email: { type: String, unique: true, required: true },
+    password: { type: String, required: true }, // 🔥 добавлено
+
     balance: { type: Number, default: 0 },
+
     purchaseHistory: [{
-        products: [{ productId: String, name: String, price: Number }],
+        products: [{
+            productId: String,
+            name: String,
+            price: Number
+        }],
         totalPrice: Number,
         date: { type: Date, default: Date.now }
     }]
 });
+
 
 // Схема продукта
 // Схема продукта
@@ -129,6 +138,85 @@ app.patch('/users/:id/balance', async (req, res) => {
         res.status(400).json({ error: err.message });
     }
 });
+
+// === РЕГИСТРАЦИЯ ===
+app.post('/register', async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email и пароль обязательны' });
+        }
+
+        const candidate = await User.findOne({ email });
+        if (candidate) {
+            return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
+        }
+
+        // Хешируем пароль
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const user = new User({
+            name,
+            email,
+            password: hashedPassword,
+            balance: 0
+        });
+
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'Регистрация успешна!',
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email
+            }
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// === ЛОГИН (email + password) ===
+app.post('/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email и пароль обязательны' });
+        }
+
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ error: 'Пользователь не найден' });
+        }
+
+        // Проверяем пароль
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Неверный пароль' });
+        }
+
+        res.json({
+            success: true,
+            message: 'Успешный вход',
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                balance: user.balance
+            }
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 // === ПРОДУКТЫ ===
 
