@@ -2,8 +2,11 @@ const express = require('express');
 const mongoose = require('mongoose');
 require('dotenv').config();
 const bcrypt = require("bcrypt");
+const cors = require('cors');
 const app = express();
 
+app.use(express.json());
+app.use(cors());
 app.use(express.json());
 
 // Проверка переменных окружения
@@ -153,7 +156,7 @@ app.post('/register', async (req, res) => {
             return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
         }
 
-        // Хешируем пароль
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const user = new User({
