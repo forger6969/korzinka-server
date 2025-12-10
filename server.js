@@ -1,14 +1,25 @@
 const express = require('express');
 const mongoose = require('mongoose');
+require('dotenv').config();
+
 const app = express();
 
 app.use(express.json());
 
+// Проверка переменных окружения
+if (!process.env.MONGODB_URL) {
+    console.error('❌ ОШИБКА: MONGODB_URL не найден в .env файле!');
+    console.error('Создай файл .env и добавь строку подключения');
+    process.exit(1);
+}
+
 // Подключение к MongoDB
-mongoose.connect(process.env.MONGODB_URL, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-});
+mongoose.connect(process.env.MONGODB_URL)
+    .then(() => console.log('✅ Подключено к MongoDB'))
+    .catch(err => {
+        console.error('❌ Ошибка подключения к MongoDB:', err.message);
+        process.exit(1);
+    });
 
 // Схема пользователя
 const userSchema = new mongoose.Schema({
@@ -168,6 +179,7 @@ app.post('/products/:id/comments', async (req, res) => {
 // === ПОКУПКА (BONUS!) ===
 
 // Проверка возможности покупки и её совершение
+// === ПОКУПКА (исправленный вариант с поддержкой повторяющихся товаров) ===
 app.post('/purchase', async (req, res) => {
     try {
         const { userId, productIds } = req.body;
@@ -176,14 +188,22 @@ app.post('/purchase', async (req, res) => {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-        // Находим все продукты
-        const products = await Product.find({ _id: { $in: productIds } });
-        if (products.length !== productIds.length) {
-            return res.status(404).json({ error: 'Некоторые продукты не найдены' });
+        // Находим уникальные продукты (Mongo возвращает уникальные документы)
+        const uniqueProducts = await Product.find({ _id: { $in: productIds } });
+
+        if (uniqueProducts.length === 0) {
+            return res.status(404).json({ error: 'Продукты не найдены' });
         }
 
-        // Вычисляем общую стоимость
-        const totalPrice = products.reduce((sum, p) => sum + p.price, 0);
+        // Воссоздаём полный список с учётом повторений
+        const allProducts = productIds.map(id => {
+            const product = uniqueProducts.find(p => p._id.toString() === id);
+            if (!product) throw new Error(`Продукт ${id} не найден`);
+            return product;
+        });
+
+        // Считаем общую стоимость
+        const totalPrice = allProducts.reduce((sum, p) => sum + p.price, 0);
 
         // Проверяем баланс
         if (user.balance < totalPrice) {
@@ -198,8 +218,9 @@ app.post('/purchase', async (req, res) => {
 
         // Совершаем покупку
         user.balance -= totalPrice;
+
         user.purchaseHistory.push({
-            products: products.map(p => ({
+            products: allProducts.map(p => ({
                 productId: p._id,
                 name: p.name,
                 price: p.price
@@ -214,13 +235,14 @@ app.post('/purchase', async (req, res) => {
             message: 'Покупка успешно совершена!',
             totalPrice,
             remainingBalance: user.balance,
-            purchasedProducts: products.map(p => p.name)
+            purchasedProducts: allProducts.map(p => p.name)
         });
 
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
+
 
 // История покупок пользователя (BONUS!)
 app.get('/users/:id/history', async (req, res) => {
@@ -251,5 +273,5 @@ app.get('/products/top/rating', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Сервер запущен на порту ${PORT}`);
+    console.log(`🚀 Сервер запущен на порту ${PORT}`);
 });
