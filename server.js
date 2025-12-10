@@ -34,11 +34,19 @@ const userSchema = new mongoose.Schema({
 });
 
 // Схема продукта
+// Схема продукта
 const productSchema = new mongoose.Schema({
     name: { type: String, required: true },
     price: { type: Number, required: true },
     category: String,
     description: String,
+
+    // 🆕 Добавлено
+    images: {
+        type: [String],   // массив ссылок
+        default: []
+    },
+
     rating: { type: Number, default: 0 },
     comments: [{
         userId: String,
@@ -48,6 +56,7 @@ const productSchema = new mongoose.Schema({
         date: { type: Date, default: Date.now }
     }]
 });
+
 
 const User = mongoose.model('User', userSchema);
 const Product = mongoose.model('Product', productSchema);
