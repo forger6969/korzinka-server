@@ -371,6 +371,42 @@ app.get('/products/top/rating', async (req, res) => {
     }
 });
 
+// === ОТЗЫВЫ ПОЛЬЗОВАТЕЛЯ ===
+app.get('/users/:id/reviews', async (req, res) => {
+    try {
+        const userId = req.params.id;
+
+        // Находим все продукты, где есть комментарии от этого пользователя
+        const products = await Product.find({ "comments.userId": userId });
+
+        const userReviews = [];
+
+        products.forEach(product => {
+            product.comments
+                .filter(comment => comment.userId === userId)
+                .forEach(comment => {
+                    userReviews.push({
+                        productId: product._id,
+                        productName: product.name,
+                        rating: comment.rating,
+                        text: comment.text,
+                        date: comment.date
+                    });
+                });
+        });
+
+        res.json({
+            success: true,
+            total: userReviews.length,
+            reviews: userReviews
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
