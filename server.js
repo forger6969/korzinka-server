@@ -527,10 +527,12 @@ app.post('/donate', async (req, res) => {
             });
         }
 
+        // Списываем с баланса пользователя
         user.balance -= amount;
         user.totalDonated += amount;
         await user.save();
 
+        // Создаем запись пожертвования
         const donation = new Donation({
             donorId: userId,
             donorName: isAnonymous ? 'Аноним' : user.name,
@@ -538,8 +540,39 @@ app.post('/donate', async (req, res) => {
             message,
             isAnonymous
         });
-
         await donation.save();
+
+        // Отправка уведомления пользователю, если есть Telegram
+        if (user.telegramChatId && bot) {
+            const userMsg = `
+💰 Спасибо за пожертвование!
+
+Сумма: ${amount.toLocaleString()} сум
+Остаток на балансе: ${user.balance.toLocaleString()} сум
+${message ? 'Сообщение: ' + message : ''}
+`;
+            try {
+                await bot.sendMessage(user.telegramChatId, userMsg);
+            } catch (err) {
+                console.error('Ошибка отправки Telegram пользователю:', err.message);
+            }
+        }
+
+        // Проверяем, есть ли заявки, которые ждут денег
+        if (bot && process.env.TELEGRAM_ADMIN_CHAT_ID) {
+            const pendingRequests = await HelpRequest.find({ status: 'pending' }).sort({ createdAt: 1 });
+            if (pendingRequests.length > 0) {
+                let notifyMsg = `💰 Новое пожертвование!\nТеперь можно проверить ожидающие заявки:\n\n`;
+                pendingRequests.forEach(r => {
+                    notifyMsg += `ID заявки: ${r._id}\nПользователь: ${r.userName}\nСумма: ${r.amount.toLocaleString()} сум\n\n`;
+                });
+                try {
+                    await bot.sendMessage(process.env.TELEGRAM_ADMIN_CHAT_ID, notifyMsg);
+                } catch (err) {
+                    console.error('Ошибка отправки Telegram админу:', err.message);
+                }
+            }
+        }
 
         res.json({
             success: true,
@@ -555,6 +588,7 @@ app.post('/donate', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
 
 app.get('/donations/stats', async (req, res) => {
     try {
@@ -988,6 +1022,26 @@ ID заявки: ${request._id}
         const request = pendingRequests[currentRequestIndex];
 
         try {
+            // Проверяем остаток фонда
+            const totalDonations = await Donation.aggregate([
+                { $group: { _id: null, total: { $sum: '$amount' } } }
+            ]);
+            const availableFunds = totalDonations.length > 0 ? totalDonations[0].total : 0;
+
+            const completedRequests = await HelpRequest.aggregate([
+                { $match: { status: 'completed' } },
+                { $group: { _id: null, total: { $sum: '$amount' } } }
+            ]);
+            const usedFunds = completedRequests.length > 0 ? completedRequests[0].total : 0;
+
+            const remainingFunds = availableFunds - usedFunds;
+
+            if (remainingFunds < request.amount) {
+                bot.sendMessage(chatId, `❌ Недостаточно средств в фонде. Подождите, пока кто-то пожертвует.`);
+                return;
+            }
+
+            // Выплата пользователю
             const user = await User.findById(request.userId);
             if (user) {
                 user.balance += request.amount;
@@ -998,18 +1052,22 @@ ID заявки: ${request._id}
                 }
             }
 
+            // Обновляем заявку
             request.status = 'completed';
             request.completedAt = new Date();
+            request.approvedAt = new Date();
             await request.save();
 
             bot.sendMessage(chatId, `✅ Заявка ${request._id} одобрена`);
 
             currentRequestIndex++;
             showRequest(chatId);
+
         } catch (err) {
             bot.sendMessage(chatId, '❌ Ошибка при одобрении заявки: ' + err.message);
         }
     });
+
 
     bot.onText(/\/reject(?:\s+(.+))?/, async (msg, match) => {
         const chatId = msg.chat.id;
