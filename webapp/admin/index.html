@@ -1,187 +1,129 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
     <meta charset="UTF-8">
-    <title>Admin Panel - Пожертвования</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body {
-            background-color: #1e1e1e;
-            color: #e5e5e5;
-            font-family: "Helvetica", "Arial", sans-serif;
-        }
-
-        .card {
-            background-color: #2a2a2a;
-            border-radius: 12px;
-            padding: 16px;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-            transition: transform 0.1s;
-        }
-
-        .card:hover {
-            transform: translateY(-2px);
-        }
-
-        .button {
-            border-radius: 8px;
-            padding: 8px 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .button-approve {
-            background-color: #00a682;
-            color: white;
-        }
-
-        .button-approve:hover {
-            background-color: #00d0aa;
-        }
-
-        .button-reject {
-            background-color: #d33f49;
-            color: white;
-        }
-
-        .button-reject:hover {
-            background-color: #ff5a66;
-        }
-
-        .status-warning {
-            color: #f0ad4e;
-            font-weight: 600;
-        }
-
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-    </style>
 </head>
+<body class="bg-gray-100 min-h-screen font-sans">
 
-<body class="p-4">
-    <h1 class="text-2xl font-bold mb-6">📊 Админ-панель пожертвований</h1>
+    <header class="bg-blue-600 text-white p-4 flex justify-between items-center">
+        <h1 class="text-2xl font-bold">Admin Panel</h1>
+        <div>
+            <span id="fund-status" class="mr-4">💰 Фонд: 0 сум</span>
+            <span id="total-donations">📈 Всего собрано: 0 сум</span>
+        </div>
+    </header>
 
-    <div class="mb-6">
-        <h2 class="text-xl font-semibold mb-2">Статистика фонда</h2>
-        <div id="stats" class="card">Загрузка...</div>
-    </div>
+    <main class="p-6">
+        <section class="mb-6">
+            <h2 class="text-xl font-semibold mb-4">Статистика фонда</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-white p-4 rounded shadow">
+                    <h3 class="font-semibold">Доступно в фонде</h3>
+                    <p id="available-funds" class="text-2xl mt-2">0 сум</p>
+                </div>
+                <div class="bg-white p-4 rounded shadow">
+                    <h3 class="font-semibold">Общие пожертвования</h3>
+                    <p id="total-donations-card" class="text-2xl mt-2">0 сум</p>
+                </div>
+                <div class="bg-white p-4 rounded shadow">
+                    <h3 class="font-semibold">Ожидающие заявки</h3>
+                    <p id="pending-requests" class="text-2xl mt-2">0</p>
+                </div>
+            </div>
+        </section>
 
-    <div>
-        <h2 class="text-xl font-semibold mb-2">Ожидающие заявки</h2>
-        <div id="requests" class="space-y-4">Загрузка...</div>
-    </div>
+        <section>
+            <h2 class="text-xl font-semibold mb-4">Заявки на помощь</h2>
+            <table class="min-w-full bg-white rounded shadow overflow-hidden">
+                <thead class="bg-gray-200">
+                    <tr>
+                        <th class="px-4 py-2">Пользователь</th>
+                        <th class="px-4 py-2">Сумма</th>
+                        <th class="px-4 py-2">Причина</th>
+                        <th class="px-4 py-2">Статус</th>
+                        <th class="px-4 py-2">Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="requests-table">
+                    <!-- Тут будут заявки -->
+                </tbody>
+            </table>
+        </section>
+    </main>
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        const API_URL = 'https://korzinka-server.onrender.com';
+<script>
+const API_BASE = 'https://korzinka-server.onrender.com';
 
-        async function loadStats() {
-            try {
-                const res = await fetch(API_URL + '/donations/stats');
-                const data = await res.json();
+// Функция для форматирования сум
+const formatSum = (sum) => sum.toLocaleString() + ' сум';
 
-                const totalDonations = data.totalAmount;
-                const totalGiven = data.topDonors.reduce((a, b) => a + b.totalDonated, 0);
-                const remainingFunds = totalDonations - totalGiven;
+// Загрузка статистики пожертвований
+async function loadStats() {
+    const res = await fetch(`${API_BASE}/donations/stats`);
+    const data = await res.json();
 
-                const statsDiv = document.getElementById('stats');
-                statsDiv.innerHTML = `
-                    <p>💰 Всего собрано: <strong>${totalDonations.toLocaleString()}</strong> сум</p>
-                    <p>✅ Выдано нуждающимся: <strong>${totalGiven.toLocaleString()}</strong> сум</p>
-                    <p>💵 Остаток фонда: <strong>${remainingFunds.toLocaleString()}</strong> сум</p>
-                    <p>📋 Всего заявок: ${data.recentDonations.length}</p>
-                `;
-            } catch (err) {
-                console.error(err);
-            }
-        }
+    document.getElementById('fund-status').textContent = `💰 Фонд: ${formatSum(data.totalAmount - data.topDonors.reduce((a,b)=>a+b.totalDonated,0))}`;
+    document.getElementById('available-funds').textContent = formatSum(data.totalAmount - data.topDonors.reduce((a,b)=>a+b.totalDonated,0));
+    document.getElementById('total-donations-card').textContent = formatSum(data.totalAmount);
+}
 
-        async function loadRequests() {
-            try {
-                const res = await fetch(API_URL + '/help-requests?status=pending');
-                const data = await res.json();
+// Загрузка заявок на помощь
+async function loadRequests() {
+    const res = await fetch(`${API_BASE}/help-requests?status=pending`);
+    const data = await res.json();
 
-                const container = document.getElementById('requests');
-                container.innerHTML = '';
+    const table = document.getElementById('requests-table');
+    table.innerHTML = '';
 
-                if (data.total === 0) {
-                    container.innerHTML = '<p>📭 Нет ожидающих заявок</p>';
-                    return;
-                }
+    document.getElementById('pending-requests').textContent = data.total;
 
-                // Получаем остаток фонда
-                const statsRes = await fetch(API_URL + '/donations/stats');
-                const statsData = await statsRes.json();
-                const remainingFunds = statsData.totalAmount - statsData.topDonors.reduce((a, b) => a + b.totalDonated, 0);
+    data.requests.forEach(req => {
+        const tr = document.createElement('tr');
+        tr.classList.add('border-b');
 
-                data.requests.forEach(req => {
-                    const div = document.createElement('div');
-                    div.className = 'card';
+        tr.innerHTML = `
+            <td class="px-4 py-2">${req.userName}</td>
+            <td class="px-4 py-2">${formatSum(req.amount)}</td>
+            <td class="px-4 py-2">${req.reason}</td>
+            <td class="px-4 py-2">${req.status}</td>
+            <td class="px-4 py-2 flex gap-2">
+                <button class="approve bg-green-500 text-white px-3 py-1 rounded" data-id="${req._id}">✅ Одобрить</button>
+                <button class="reject bg-red-500 text-white px-3 py-1 rounded" data-id="${req._id}">❌ Отклонить</button>
+            </td>
+        `;
 
-                    const isFundSufficient = remainingFunds >= req.amount;
+        table.appendChild(tr);
+    });
 
-                    let statusText = '';
-                    if (req.status === 'rejected') statusText = `<p class="status-warning">❌ Отклонено: ${req.rejectionReason || ''}</p>`;
-                    if (req.status === 'completed') statusText = `<p class="status-warning">✅ Выполнено</p>`;
+    // Вешаем события на кнопки
+    document.querySelectorAll('.approve').forEach(btn => {
+        btn.addEventListener('click', () => handleRequest(btn.dataset.id, 'approved'));
+    });
+    document.querySelectorAll('.reject').forEach(btn => {
+        const reason = prompt('Причина отклонения заявки (можно оставить пустым)');
+        btn.addEventListener('click', () => handleRequest(btn.dataset.id, 'rejected', reason));
+    });
+}
 
-                    div.innerHTML = `
-                        <p><strong>${req.userName}</strong> (${req.userEmail || 'не указан'})</p>
-                        <p>💰 Сумма: <strong>${req.amount.toLocaleString()}</strong> сум</p>
-                        <p>📝 Причина: ${req.reason}</p>
-                        <p>📞 Телефон: ${req.phone || 'не указан'}, Telegram: ${req.telegramUsername || 'не указан'}</p>
-                        ${!isFundSufficient ? `<p class="status-warning">⚠ Недостаточно средств в фонде. Ожидайте пожертвований.</p>` : ''}
-                        ${statusText}
-                        <div class="mt-3 flex gap-2">
-                            <button class="button button-approve" data-id="${req._id}" ${!isFundSufficient || req.status !== 'pending' ? 'disabled' : ''}>✅ Одобрить</button>
-                            <button class="button button-reject" data-id="${req._id}" ${req.status !== 'pending' ? 'disabled' : ''}>❌ Отклонить</button>
-                        </div>
-                    `;
-                    container.appendChild(div);
-                });
+// Обработка одобрения/отклонения
+async function handleRequest(id, status, reason = '') {
+    const body = status === 'rejected' ? { status, rejectionReason: reason } : { status, approvedBy: 'admin' };
+    await fetch(`${API_BASE}/help-requests/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    await loadStats();
+    await loadRequests();
+}
 
-                document.querySelectorAll('.button-approve').forEach(btn => {
-                    btn.addEventListener('click', () => handleRequest(btn.dataset.id, 'approved'));
-                });
-                document.querySelectorAll('.button-reject').forEach(btn => {
-                    btn.addEventListener('click', () => handleRequest(btn.dataset.id, 'rejected'));
-                });
+// Инициализация
+loadStats();
+loadRequests();
+</script>
 
-            } catch (err) {
-                console.error(err);
-            }
-        }
-
-        async function handleRequest(id, action) {
-            let body = { status: action };
-            if (action === 'rejected') {
-                const reason = prompt('Укажите причину отклонения:') || 'Отклонено администратором';
-                body.rejectionReason = reason;
-            }
-
-            try {
-                const res = await fetch(API_URL + `/help-requests/${id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                const data = await res.json();
-                alert(data.message);
-                loadRequests();
-                loadStats();
-            } catch (err) {
-                console.error(err);
-                alert('Ошибка при обработке заявки');
-            }
-        }
-
-        loadStats();
-        loadRequests();
-    </script>
 </body>
-
 </html>
