@@ -1170,17 +1170,21 @@ ID заявки: ${request._id}
         if (!bot) return;
 
         // Генерируем кнопку Web App
-        const webAppUrl = 'https://korzinka-server.onrender.com/webapp/admin/index.html'; // твой WebApp
+        const webAppUrl = 'https://korzinka-server.onrender.com/webapp/admin/index.html';
 
-        bot.sendMessage(chatId, 'Открыть админ-панель:', {
+        bot.sendMessage(process.env.TELEGRAM_ADMIN_CHAT_ID, '🛠 Открыть админ-панель', {
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: "🛠 Админ-панель", web_app: { url: webAppUrl } }
+                        {
+                            text: "🛠 Админ-панель",
+                            web_app: { url: webAppUrl }
+                        }
                     ]
                 ]
             }
         });
+
 
 
         await bot.sendMessage(chatId, 'Выберите сумму для пополнения:', inlineKeyboard);
