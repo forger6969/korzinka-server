@@ -1172,17 +1172,15 @@ ID заявки: ${request._id}
         // Генерируем кнопку Web App
         const webAppUrl = 'https://korzinka-server.onrender.com/webapp/admin/index.html';
 
-        bot.sendMessage(process.env.TELEGRAM_ADMIN_CHAT_ID, '🛠 Открыть админ-панель', {
+        bot.sendMessage(chatId, "Открыть WebApp:", {
             reply_markup: {
                 keyboard: [
                     [
-                        {
-                            text: "🛠 Админ-панель",
-                            web_app: { url: webAppUrl }
-                        }
+                        { text: "Открыть WebApp", web_app: { url: webAppUrl } }
                     ]
                 ],
-                resize_keyboard: true
+                resize_keyboard: true,    // кнопка будет компактнее
+                one_time_keyboard: false  // кнопка будет всегда
             }
         });
 
