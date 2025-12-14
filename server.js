@@ -1043,14 +1043,14 @@ ID заявки: ${request._id}
 // ========================================
 // GRACEFUL SHUTDOWN
 // ========================================
-process.on('SIGTERM', () => {
-    console.log('⏹️ SIGTERM получен. Останавливаем сервер...');
-    process.exit(0);
-});
-process.on('SIGINT', () => {
-    console.log('⏹️ SIGINT получен. Останавливаем сервер...');
-    process.exit(0);
-});
+// process.on('SIGTERM', () => {
+//     console.log('⏹️ SIGTERM получен. Останавливаем сервер...');
+//     process.exit(0);
+// });
+// process.on('SIGINT', () => {
+//     console.log('⏹️ SIGINT получен. Останавливаем сервер...');
+//     process.exit(0);
+// });
 
 
 const PORT = process.env.PORT
