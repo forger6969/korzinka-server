@@ -54,50 +54,34 @@ mongoose.connect(process.env.MONGODB_URL)
 // 🔧 ИСПРАВЛЕНИЕ: Telegram Bot с обработкой ошибок
 // ========================================
 let bot;
+
 if (process.env.TELEGRAM_BOT_TOKEN) {
-    try {
-        // ВАЖНО: Используем webhook вместо polling для production
-        if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
-            // Для production (Render.com) используем webhook
-            bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { 
-                polling: false  // ❌ Отключаем polling в production!
-            });
-            
-            console.log('✅ Telegram бот инициализирован (webhook mode)');
-            console.log('⚠️  Внимание: В production режиме команды бота работают только через webhook');
-            console.log('💡 Для работы команд настройте webhook: https://core.telegram.org/bots/api#setwebhook');
-        } else {
-            // Для development используем polling
-            bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { 
-                polling: {
-                    interval: 1000,
-                    autoStart: true,
-                    params: {
-                        timeout: 10
-                    }
-                }
-            });
-            console.log('✅ Telegram бот запущен (polling mode)');
-        }
+    bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
 
-        // Обработка ошибок polling
-        bot.on('polling_error', (error) => {
-            console.error('⚠️ Telegram polling error:', error.code);
-            if (error.code === 'ETELEGRAM' && error.message.includes('409 Conflict')) {
-                console.log('💡 Совет: Остановите другие экземпляры бота или используйте webhook в production');
-            }
+    if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+        // Webhook URL, укажи свой URL сервера + путь
+        const url = process.env.WEBHOOK_URL || 'https://korzinka-server.onrender.com/bot-webhook';
+
+        // Устанавливаем webhook
+        bot.setWebHook(url)
+            .then(() => console.log('✅ Webhook установлен:', url))
+            .catch(err => console.error('❌ Ошибка установки webhook:', err.message));
+
+        // Создаём endpoint для Telegram
+        app.post('/bot-webhook', (req, res) => {
+            bot.processUpdate(req.body); // Telegram шлёт обновления сюда
+            res.sendStatus(200);
         });
 
-        // Обработка общих ошибок
-        bot.on('error', (error) => {
-            console.error('❌ Telegram bot error:', error);
-        });
+        console.log('✅ Telegram бот готов к работе через webhook');
 
-    } catch (error) {
-        console.error('❌ Ошибка инициализации Telegram бота:', error.message);
-        bot = null;
+    } else {
+        // Dev: оставляем polling
+        bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+        console.log('✅ Telegram бот запущен в режиме polling (dev)');
     }
 }
+
 
 // Схема пользователя
 const userSchema = new mongoose.Schema({
