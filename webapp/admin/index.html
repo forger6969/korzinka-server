@@ -1,129 +1,172 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Админ-панель</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <title>Админ-панель фонда</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    /* ========== BASE STYLES ========== */
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #1e1e1e; color: #e5e5e5; padding: 20px; }
+    h1 { text-align: center; margin-bottom: 20px; font-size: 28px; color: #fff; }
+
+    /* ========== FUND INFO ========== */
+    .fund {
+      background: #2a2a2a;
+      padding: 15px 20px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 20px;
+      text-align: center;
+      margin-bottom: 25px;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.5);
+    }
+
+    /* ========== REQUEST CARD ========== */
+    .request {
+      background: #252525;
+      padding: 20px;
+      border-radius: 16px;
+      margin-bottom: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      transition: transform 0.2s, background 0.2s;
+    }
+    .request:hover { transform: translateY(-3px); background: #2c2c2c; }
+    .request p { margin-bottom: 10px; font-size: 16px; }
+    .request p span { font-weight: 600; }
+
+    /* ========== BUTTONS ========== */
+    .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
+    .buttons button {
+      flex: 1;
+      padding: 10px 15px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      transition: transform 0.1s, box-shadow 0.1s;
+      color: #fff;
+    }
+    .buttons button:hover { transform: translateY(-2px); box-shadow: 0 3px 6px rgba(0,0,0,0.4); }
+    .approve { background-color: #1d9d63; }
+    .approve:hover { background-color: #21b36a; }
+    .reject { background-color: #d32f2f; }
+    .reject:hover { background-color: #e53935; }
+
+    /* ========== NO REQUESTS MESSAGE ========== */
+    .empty {
+      text-align: center;
+      font-size: 18px;
+      margin-top: 50px;
+      color: #aaa;
+    }
+
+    /* ========== SCROLLABLE LIST ========== */
+    #requestsContainer {
+      max-height: 70vh;
+      overflow-y: auto;
+      padding-right: 10px;
+    }
+    #requestsContainer::-webkit-scrollbar { width: 8px; }
+    #requestsContainer::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+    #requestsContainer::-webkit-scrollbar-track { background: #1e1e1e; }
+  </style>
 </head>
-<body class="bg-gray-100 min-h-screen font-sans">
+<body>
+  <h1>Админ-панель фонда</h1>
+  <div class="fund">💰 Сумма в фонде: <span id="fundAmount">...</span> сум</div>
+  <div id="requestsContainer"></div>
 
-    <header class="bg-blue-600 text-white p-4 flex justify-between items-center">
-        <h1 class="text-2xl font-bold">Admin Panel</h1>
-        <div>
-            <span id="fund-status" class="mr-4">💰 Фонд: 0 сум</span>
-            <span id="total-donations">📈 Всего собрано: 0 сум</span>
-        </div>
-    </header>
+  <script>
+    const tg = window.Telegram.WebApp;
+    const API_URL = 'https://korzinka-server.onrender.com';
 
-    <main class="p-6">
-        <section class="mb-6">
-            <h2 class="text-xl font-semibold mb-4">Статистика фонда</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="bg-white p-4 rounded shadow">
-                    <h3 class="font-semibold">Доступно в фонде</h3>
-                    <p id="available-funds" class="text-2xl mt-2">0 сум</p>
-                </div>
-                <div class="bg-white p-4 rounded shadow">
-                    <h3 class="font-semibold">Общие пожертвования</h3>
-                    <p id="total-donations-card" class="text-2xl mt-2">0 сум</p>
-                </div>
-                <div class="bg-white p-4 rounded shadow">
-                    <h3 class="font-semibold">Ожидающие заявки</h3>
-                    <p id="pending-requests" class="text-2xl mt-2">0</p>
-                </div>
-            </div>
-        </section>
+    let requests = [];
+    let fundAmount = 0;
 
-        <section>
-            <h2 class="text-xl font-semibold mb-4">Заявки на помощь</h2>
-            <table class="min-w-full bg-white rounded shadow overflow-hidden">
-                <thead class="bg-gray-200">
-                    <tr>
-                        <th class="px-4 py-2">Пользователь</th>
-                        <th class="px-4 py-2">Сумма</th>
-                        <th class="px-4 py-2">Причина</th>
-                        <th class="px-4 py-2">Статус</th>
-                        <th class="px-4 py-2">Действия</th>
-                    </tr>
-                </thead>
-                <tbody id="requests-table">
-                    <!-- Тут будут заявки -->
-                </tbody>
-            </table>
-        </section>
-    </main>
+    async function fetchFundAndRequests() {
+      // 1. Получаем фонд
+      const statsRes = await fetch(`${API_URL}/donations/stats`);
+      const stats = await statsRes.json();
+      const completedRequestsRes = await fetch(`${API_URL}/help-requests?status=completed`);
+      const completedRequestsData = await completedRequestsRes.json();
+      const used = completedRequestsData.requests.reduce((acc, r) => acc + r.amount, 0);
+      fundAmount = stats.totalAmount - used;
+      document.getElementById('fundAmount').textContent = fundAmount.toLocaleString();
 
-<script>
-const API_BASE = 'https://korzinka-server.onrender.com';
+      // 2. Получаем pending заявки
+      const reqRes = await fetch(`${API_URL}/help-requests?status=pending`);
+      const data = await reqRes.json();
+      requests = data.requests;
+      renderRequests();
+    }
 
-// Функция для форматирования сум
-const formatSum = (sum) => sum.toLocaleString() + ' сум';
+    function renderRequests() {
+      const container = document.getElementById('requestsContainer');
+      container.innerHTML = '';
 
-// Загрузка статистики пожертвований
-async function loadStats() {
-    const res = await fetch(`${API_BASE}/donations/stats`);
-    const data = await res.json();
+      if (requests.length === 0) {
+        container.innerHTML = '<p class="empty">📭 Нет ожидающих заявок</p>';
+        return;
+      }
 
-    document.getElementById('fund-status').textContent = `💰 Фонд: ${formatSum(data.totalAmount - data.topDonors.reduce((a,b)=>a+b.totalDonated,0))}`;
-    document.getElementById('available-funds').textContent = formatSum(data.totalAmount - data.topDonors.reduce((a,b)=>a+b.totalDonated,0));
-    document.getElementById('total-donations-card').textContent = formatSum(data.totalAmount);
-}
-
-// Загрузка заявок на помощь
-async function loadRequests() {
-    const res = await fetch(`${API_BASE}/help-requests?status=pending`);
-    const data = await res.json();
-
-    const table = document.getElementById('requests-table');
-    table.innerHTML = '';
-
-    document.getElementById('pending-requests').textContent = data.total;
-
-    data.requests.forEach(req => {
-        const tr = document.createElement('tr');
-        tr.classList.add('border-b');
-
-        tr.innerHTML = `
-            <td class="px-4 py-2">${req.userName}</td>
-            <td class="px-4 py-2">${formatSum(req.amount)}</td>
-            <td class="px-4 py-2">${req.reason}</td>
-            <td class="px-4 py-2">${req.status}</td>
-            <td class="px-4 py-2 flex gap-2">
-                <button class="approve bg-green-500 text-white px-3 py-1 rounded" data-id="${req._id}">✅ Одобрить</button>
-                <button class="reject bg-red-500 text-white px-3 py-1 rounded" data-id="${req._id}">❌ Отклонить</button>
-            </td>
+      requests.forEach((req, index) => {
+        const div = document.createElement('div');
+        div.className = 'request';
+        div.innerHTML = `
+          <p>👤 <span>Пользователь:</span> ${req.userName}</p>
+          <p>💰 <span>Сумма:</span> ${req.amount.toLocaleString()} сум</p>
+          <p>📝 <span>Причина:</span> ${req.reason}</p>
+          <div class="buttons">
+            <button class="approve">✅ Одобрить</button>
+            <button class="reject">❌ Отклонить</button>
+          </div>
         `;
+        container.appendChild(div);
 
-        table.appendChild(tr);
-    });
+        div.querySelector('.approve').onclick = () => handleApproval(req._id, index);
+        div.querySelector('.reject').onclick = () => handleRejection(req._id, index);
+      });
+    }
 
-    // Вешаем события на кнопки
-    document.querySelectorAll('.approve').forEach(btn => {
-        btn.addEventListener('click', () => handleRequest(btn.dataset.id, 'approved'));
-    });
-    document.querySelectorAll('.reject').forEach(btn => {
-        const reason = prompt('Причина отклонения заявки (можно оставить пустым)');
-        btn.addEventListener('click', () => handleRequest(btn.dataset.id, 'rejected', reason));
-    });
-}
-
-// Обработка одобрения/отклонения
-async function handleRequest(id, status, reason = '') {
-    const body = status === 'rejected' ? { status, rejectionReason: reason } : { status, approvedBy: 'admin' };
-    await fetch(`${API_BASE}/help-requests/${id}`, {
+    async function handleApproval(requestId, index) {
+      const res = await fetch(`${API_URL}/help-requests/${requestId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    await loadStats();
-    await loadRequests();
-}
+        body: JSON.stringify({ status: 'approved', approvedBy: 'Admin' })
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert(`❌ Ошибка: ${data.error}`);
+      } else {
+        // убираем карточку из списка
+        requests.splice(index, 1);
+        fundAmount -= data.request.amount;
+        document.getElementById('fundAmount').textContent = fundAmount.toLocaleString();
+        renderRequests();
+      }
+    }
 
-// Инициализация
-loadStats();
-loadRequests();
-</script>
+    async function handleRejection(requestId, index) {
+      const reason = prompt('Введите причину отклонения:', 'Отклонено администратором');
+      if (!reason) return;
+      const res = await fetch(`${API_URL}/help-requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'rejected', approvedBy: 'Admin', rejectionReason: reason })
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert(`❌ Ошибка: ${data.error}`);
+      } else {
+        // убираем карточку из списка
+        requests.splice(index, 1);
+        renderRequests();
+      }
+    }
 
+    fetchFundAndRequests();
+  </script>
 </body>
 </html>
