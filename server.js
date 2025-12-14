@@ -56,25 +56,19 @@ mongoose.connect(process.env.MONGODB_URL)
 let bot;
 
 if (process.env.TELEGRAM_BOT_TOKEN) {
-    bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
-
     if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
-        // Webhook URL, укажи свой URL сервера + путь
+        bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
         const url = process.env.WEBHOOK_URL || 'https://korzinka-server.onrender.com/bot-webhook';
-
-        // Устанавливаем webhook
         bot.setWebHook(url)
             .then(() => console.log('✅ Webhook установлен:', url))
-            .catch(err => console.error('❌ Ошибка установки webhook:', err.message));
-
+            .catch(err => console.error('❌ Ошибка webhook:', err.message));
         console.log('✅ Telegram бот готов к работе через webhook');
-
     } else {
-        // Dev: оставляем polling
         bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
-        console.log('✅ Telegram бот запущен в режиме polling (dev)');
+        console.log('✅ Telegram бот запущен через polling (dev)');
     }
 }
+
 
 
 // Схема пользователя
@@ -153,9 +147,12 @@ const HelpRequest = mongoose.model('HelpRequest', helpRequestSchema);
 const Donation = mongoose.model('Donation', donationSchema);
 
 app.post('/bot-webhook', async (req, res) => {
-    await bot.processUpdate(req.body);
+    if (bot) {
+        await bot.processUpdate(req.body);
+    }
     res.sendStatus(200);
 });
+
 
 
 // === ПОЛЬЗОВАТЕЛИ ===
@@ -1042,21 +1039,15 @@ ID заявки: ${request._id}
 // ========================================
 // GRACEFUL SHUTDOWN
 // ========================================
-process.on('SIGTERM', async () => {
-    console.log('⏹️  SIGTERM получен. Останавливаем бота...');
-    if (bot && bot.isPolling()) {
-        await bot.stopPolling();
-    }
+process.on('SIGTERM', () => {
+    console.log('⏹️ SIGTERM получен. Останавливаем сервер...');
+    process.exit(0);
+});
+process.on('SIGINT', () => {
+    console.log('⏹️ SIGINT получен. Останавливаем сервер...');
     process.exit(0);
 });
 
-process.on('SIGINT', async () => {
-    console.log('⏹️  SIGINT получен. Останавливаем бота...');
-    if (bot && bot.isPolling()) {
-        await bot.stopPolling();
-    }
-    process.exit(0);
-});
 
 const PORT = process.env.PORT || 3000;
 
