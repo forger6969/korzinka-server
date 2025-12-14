@@ -1174,16 +1174,18 @@ ID заявки: ${request._id}
 
         bot.sendMessage(process.env.TELEGRAM_ADMIN_CHAT_ID, '🛠 Открыть админ-панель', {
             reply_markup: {
-                inline_keyboard: [
+                keyboard: [
                     [
                         {
                             text: "🛠 Админ-панель",
                             web_app: { url: webAppUrl }
                         }
                     ]
-                ]
+                ],
+                resize_keyboard: true
             }
         });
+
 
 
 
