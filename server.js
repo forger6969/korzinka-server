@@ -146,12 +146,16 @@ const Product = mongoose.model('Product', productSchema);
 const HelpRequest = mongoose.model('HelpRequest', helpRequestSchema);
 const Donation = mongoose.model('Donation', donationSchema);
 
-app.post('/bot-webhook', async (req, res) => {
-    if (bot) {
-        await bot.processUpdate(req.body);
+app.post('/bot-webhook', (req, res) => {
+    try {
+        bot.processUpdate(req.body); // <- это важно
+        res.sendStatus(200);
+    } catch (e) {
+        console.error('Ошибка при обработке update:', e);
+        res.sendStatus(500);
     }
-    res.sendStatus(200);
 });
+
 
 
 
