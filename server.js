@@ -1011,7 +1011,7 @@ ID заявки: ${request._id}
         }
     });
 
-    bot.onText(/\/reject/, async (msg) => {
+    bot.onText(/\/reject(?:\s+(.+))?/, async (msg, match) => {
         const chatId = msg.chat.id;
         if (chatId.toString() !== process.env.TELEGRAM_ADMIN_CHAT_ID) return;
 
@@ -1022,18 +1022,25 @@ ID заявки: ${request._id}
 
         const request = pendingRequests[currentRequestIndex];
 
+        // Причина отказа (если админ написал текст после команды)
+        const rejectionReason = match[1] ? match[1].trim() : 'Отклонено администратором';
+
         try {
             request.status = 'rejected';
-            request.rejectionReason = 'Отклонено администратором';
+            request.rejectionReason = rejectionReason;
             request.approvedAt = new Date();
             await request.save();
 
+            // Отправляем сообщение пользователю, если есть chatId
             const user = await User.findById(request.userId);
             if (user && user.telegramChatId) {
-                await bot.sendMessage(user.telegramChatId, `❌ Ваша заявка на помощь отклонена. Причина: ${request.rejectionReason}`);
+                await bot.sendMessage(
+                    user.telegramChatId,
+                    `❌ Ваша заявка на помощь отклонена.\nПричина: ${rejectionReason}\n💰 Запрашиваемая сумма: ${request.amount.toLocaleString()} сум\n📝 Причина запроса: ${request.reason}`
+                );
             }
 
-            bot.sendMessage(chatId, `❌ Заявка ${request._id} отклонена`);
+            bot.sendMessage(chatId, `❌ Заявка ${request._id} отклонена с причиной: "${rejectionReason}"`);
 
             currentRequestIndex++;
             showRequest(chatId);
@@ -1041,6 +1048,7 @@ ID заявки: ${request._id}
             bot.sendMessage(chatId, '❌ Ошибка при отклонении заявки: ' + err.message);
         }
     });
+
 
     bot.onText(/\/next/, async (msg) => {
         const chatId = msg.chat.id;
