@@ -53,21 +53,29 @@ mongoose.connect(process.env.MONGODB_URL)
 // ========================================
 // 🔧 ИСПРАВЛЕНИЕ: Telegram Bot с обработкой ошибок
 // ========================================
-let bot;
+let bot
 
 if (process.env.TELEGRAM_BOT_TOKEN) {
-    if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
-        bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
-        const url = process.env.WEBHOOK_URL || 'https://korzinka-server.onrender.com/bot-webhook';
-        bot.setWebHook(url)
-            .then(() => console.log('✅ Webhook установлен:', url))
-            .catch(err => console.error('❌ Ошибка webhook:', err.message));
-        console.log('✅ Telegram бот готов к работе через webhook');
-    } else {
-        bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
-        console.log('✅ Telegram бот запущен через polling (dev)');
-    }
+    bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
+        polling: false
+    });
+
+    const WEBHOOK_URL =
+        process.env.WEBHOOK_URL ||
+        'https://korzinka-server.onrender.com/bot-webhook';
+
+    (async () => {
+        try {
+            await bot.deleteWebHook(); // 🔥 КРИТИЧЕСКИ ВАЖНО
+            await bot.setWebHook(WEBHOOK_URL);
+            console.log('✅ Webhook установлен:', WEBHOOK_URL);
+        } catch (err) {
+            console.error('❌ Ошибка установки webhook:', err.message);
+        }
+    })();
 }
+
+
 
 
 
@@ -147,14 +155,19 @@ const HelpRequest = mongoose.model('HelpRequest', helpRequestSchema);
 const Donation = mongoose.model('Donation', donationSchema);
 
 app.post('/bot-webhook', (req, res) => {
+    if (!bot) return res.sendStatus(200);
+
+    console.log('📩 Telegram update:', JSON.stringify(req.body, null, 2));
+
     try {
-        bot.processUpdate(req.body); // <- это важно
+        bot.processUpdate(req.body);
         res.sendStatus(200);
-    } catch (e) {
-        console.error('Ошибка при обработке update:', e);
+    } catch (err) {
+        console.error('❌ bot.processUpdate error:', err);
         res.sendStatus(500);
     }
 });
+
 
 
 
@@ -837,7 +850,7 @@ app.patch('/help-requests/:id', async (req, res) => {
 // ========================================
 
 // Проверяем, что мы в development и polling включен
-if (bot && (!process.env.NODE_ENV || process.env.NODE_ENV === 'development') && !process.env.RENDER) {
+if (bot) {
     let currentRequestIndex = 0;
     let pendingRequests = [];
 
@@ -1043,14 +1056,14 @@ ID заявки: ${request._id}
 // ========================================
 // GRACEFUL SHUTDOWN
 // ========================================
-// process.on('SIGTERM', () => {
-//     console.log('⏹️ SIGTERM получен. Останавливаем сервер...');
-//     process.exit(0);
-// });
-// process.on('SIGINT', () => {
-//     console.log('⏹️ SIGINT получен. Останавливаем сервер...');
-//     process.exit(0);
-// });
+process.on('SIGTERM', () => {
+    console.log('⏹️ SIGTERM получен. Останавливаем сервер...');
+    process.exit(0);
+});
+process.on('SIGINT', () => {
+    console.log('⏹️ SIGINT получен. Останавливаем сервер...');
+    process.exit(0);
+});
 
 
 const PORT = process.env.PORT
