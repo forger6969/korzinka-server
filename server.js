@@ -67,12 +67,6 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
             .then(() => console.log('✅ Webhook установлен:', url))
             .catch(err => console.error('❌ Ошибка установки webhook:', err.message));
 
-        // Создаём endpoint для Telegram
-        app.post('/bot-webhook', (req, res) => {
-            bot.processUpdate(req.body); // Telegram шлёт обновления сюда
-            res.sendStatus(200);
-        });
-
         console.log('✅ Telegram бот готов к работе через webhook');
 
     } else {
