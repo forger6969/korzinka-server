@@ -158,6 +158,12 @@ const Product = mongoose.model('Product', productSchema);
 const HelpRequest = mongoose.model('HelpRequest', helpRequestSchema);
 const Donation = mongoose.model('Donation', donationSchema);
 
+app.post('/bot-webhook', async (req, res) => {
+    await bot.processUpdate(req.body);
+    res.sendStatus(200);
+});
+
+
 // === ПОЛЬЗОВАТЕЛИ ===
 
 app.get('/users', async (req, res) => {
