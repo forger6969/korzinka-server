@@ -4,6 +4,7 @@ require('dotenv').config();
 const bcrypt = require("bcrypt");
 const cors = require('cors');
 const TelegramBot = require('node-telegram-bot-api');
+const path = require('path');
 
 const { swaggerUi, swaggerSpec } = require('./swagger');
 
@@ -16,6 +17,11 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: "API Документация"
 }));
+
+
+// Раздаём статические файлы из папки webapp
+app.use('/webapp', express.static(path.join(__dirname, 'webapp')));
+
 
 // Корневой маршрут с информацией
 app.get('/', (req, res) => {
@@ -73,6 +79,16 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
             console.error('❌ Ошибка установки webhook:', err.message);
         }
     })();
+
+    const webAppUrl = 'https://korzinka-server.onrender.com/webapp/admin/index.html';
+
+    bot.sendMessage(process.env.TELEGRAM_ADMIN_CHAT_ID, '🛠 Открыть админ-панель', {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: "Админ-панель", web_app: { url: webAppUrl } }]
+            ]
+        }
+    });
 }
 
 

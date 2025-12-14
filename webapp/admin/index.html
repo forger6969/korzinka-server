@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel - Пожертвования</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen p-4">
+    <h1 class="text-2xl font-bold mb-4">Админ-панель системы пожертвований</h1>
+
+    <div class="mb-6">
+        <h2 class="text-xl font-semibold">Статистика фонда</h2>
+        <div id="stats" class="mt-2 p-4 bg-white rounded shadow">Загрузка...</div>
+    </div>
+
+    <div>
+        <h2 class="text-xl font-semibold mb-2">Ожидающие заявки</h2>
+        <div id="requests" class="space-y-4">Загрузка...</div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const API_URL = 'https://korzinka-server.onrender.com';
+
+        async function loadStats() {
+            try {
+                const res = await fetch(API_URL + '/donations/stats');
+                const data = await res.json();
+
+                const statsDiv = document.getElementById('stats');
+                statsDiv.innerHTML = `
+                    <p>💰 Всего собрано: ${data.totalAmount.toLocaleString()} сум</p>
+                    <p>✅ Выдано нуждающимся: ${(data.topDonors.reduce((a, b) => a + b.totalDonated, 0)).toLocaleString()} сум</p>
+                    <p>💵 Остаток фонда: ${(data.totalAmount - data.topDonors.reduce((a, b) => a + b.totalDonated, 0)).toLocaleString()} сум</p>
+                    <p>📋 Заявок на рассмотрении: ${data.recentDonations.length}</p>
+                `;
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function loadRequests() {
+            try {
+                const res = await fetch(API_URL + '/help-requests?status=pending');
+                const data = await res.json();
+
+                const container = document.getElementById('requests');
+                container.innerHTML = '';
+
+                if (data.total === 0) {
+                    container.innerHTML = '<p>📭 Нет ожидающих заявок</p>';
+                    return;
+                }
+
+                data.requests.forEach(req => {
+                    const div = document.createElement('div');
+                    div.className = 'p-4 bg-white rounded shadow';
+
+                    div.innerHTML = `
+                        <p><strong>${req.userName}</strong> (${req.userEmail || 'не указан'})</p>
+                        <p>💰 Сумма: ${req.amount.toLocaleString()} сум</p>
+                        <p>📝 Причина: ${req.reason}</p>
+                        <p>📞 Телефон: ${req.phone || 'не указан'}, Telegram: ${req.telegramUsername || 'не указан'}</p>
+                        <div class="mt-2 flex gap-2">
+                            <button class="approve px-3 py-1 bg-green-500 text-white rounded" data-id="${req._id}">✅ Одобрить</button>
+                            <button class="reject px-3 py-1 bg-red-500 text-white rounded" data-id="${req._id}">❌ Отклонить</button>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+
+                document.querySelectorAll('.approve').forEach(btn => {
+                    btn.addEventListener('click', () => handleRequest(btn.dataset.id, 'approved'));
+                });
+                document.querySelectorAll('.reject').forEach(btn => {
+                    btn.addEventListener('click', () => handleRequest(btn.dataset.id, 'rejected'));
+                });
+
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function handleRequest(id, action) {
+            let body = { status: action };
+            if (action === 'rejected') {
+                const reason = prompt('Укажите причину отклонения:') || 'Отклонено администратором';
+                body.rejectionReason = reason;
+            }
+
+            try {
+                const res = await fetch(API_URL + `/help-requests/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                alert(data.message);
+                loadRequests();
+                loadStats();
+            } catch (err) {
+                console.error(err);
+                alert('Ошибка при обработке заявки');
+            }
+        }
+
+        loadStats();
+        loadRequests();
+    </script>
+</body>
+
+</html>
