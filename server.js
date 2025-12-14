@@ -5,10 +5,32 @@ const bcrypt = require("bcrypt");
 const cors = require('cors');
 const TelegramBot = require('node-telegram-bot-api');
 
+const { swaggerUi, swaggerSpec } = require('./swagger');
+
 const app = express();
 
 app.use(express.json());
 app.use(cors());
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: "API Документация"
+}));
+
+// Корневой маршрут с информацией
+app.get('/', (req, res) => {
+    res.json({
+        message: '🎉 Добро пожаловать в API системы пожертвований!',
+        documentation: 'https://korzinka-server.onrender.com/api-docs',
+        endpoints: {
+            auth: '/register, /login',
+            users: '/users',
+            products: '/products',
+            donations: '/donate, /donations/stats',
+            helpRequests: '/help-request, /help-requests'
+        }
+    });
+});
 
 // Проверка переменных окружения
 if (!process.env.MONGODB_URL) {
@@ -28,11 +50,53 @@ mongoose.connect(process.env.MONGODB_URL)
         process.exit(1);
     });
 
-// Telegram Bot
+// ========================================
+// 🔧 ИСПРАВЛЕНИЕ: Telegram Bot с обработкой ошибок
+// ========================================
 let bot;
 if (process.env.TELEGRAM_BOT_TOKEN) {
-    bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
-    console.log('✅ Telegram бот запущен');
+    try {
+        // ВАЖНО: Используем webhook вместо polling для production
+        if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+            // Для production (Render.com) используем webhook
+            bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { 
+                polling: false  // ❌ Отключаем polling в production!
+            });
+            
+            console.log('✅ Telegram бот инициализирован (webhook mode)');
+            console.log('⚠️  Внимание: В production режиме команды бота работают только через webhook');
+            console.log('💡 Для работы команд настройте webhook: https://core.telegram.org/bots/api#setwebhook');
+        } else {
+            // Для development используем polling
+            bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { 
+                polling: {
+                    interval: 1000,
+                    autoStart: true,
+                    params: {
+                        timeout: 10
+                    }
+                }
+            });
+            console.log('✅ Telegram бот запущен (polling mode)');
+        }
+
+        // Обработка ошибок polling
+        bot.on('polling_error', (error) => {
+            console.error('⚠️ Telegram polling error:', error.code);
+            if (error.code === 'ETELEGRAM' && error.message.includes('409 Conflict')) {
+                console.log('💡 Совет: Остановите другие экземпляры бота или используйте webhook в production');
+            }
+        });
+
+        // Обработка общих ошибок
+        bot.on('error', (error) => {
+            console.error('❌ Telegram bot error:', error);
+        });
+
+    } catch (error) {
+        console.error('❌ Ошибка инициализации Telegram бота:', error.message);
+        bot = null;
+    }
 }
 
 // Схема пользователя
@@ -42,7 +106,7 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true },
     balance: { type: Number, default: 0 },
     totalDonated: { type: Number, default: 0 },
-    telegramChatId: String, // 🆕 для отправки уведомлений
+    telegramChatId: String,
     purchaseHistory: [{
         products: [{
             productId: String,
@@ -80,7 +144,7 @@ const helpRequestSchema = new mongoose.Schema({
     userName: String,
     userEmail: String,
     phone: String,
-    telegramUsername: String, // 🆕 Telegram username для связи
+    telegramUsername: String,
     reason: { type: String, required: true },
     amount: { type: Number, required: true, max: 50000 },
     status: {
@@ -91,7 +155,7 @@ const helpRequestSchema = new mongoose.Schema({
     approvedBy: String,
     approvedAt: Date,
     completedAt: Date,
-    rejectionReason: String, // 🆕 причина отклонения
+    rejectionReason: String,
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -174,7 +238,6 @@ app.patch('/users/:id/balance', async (req, res) => {
     }
 });
 
-// 🆕 Привязать Telegram к аккаунту
 app.patch('/users/:id/telegram', async (req, res) => {
     try {
         const user = await User.findById(req.params.id);
@@ -441,7 +504,7 @@ app.get('/users/:id/reviews', async (req, res) => {
 });
 
 // ========================================
-// 🆕 СИСТЕМА ПОЖЕРТВОВАНИЙ
+// СИСТЕМА ПОЖЕРТВОВАНИЙ
 // ========================================
 
 app.post('/donate', async (req, res) => {
@@ -551,7 +614,7 @@ app.get('/users/:id/donations', async (req, res) => {
 });
 
 // ========================================
-// 🆕 ЗАЯВКИ НА ПОМОЩЬ
+// ЗАЯВКИ НА ПОМОЩЬ
 // ========================================
 
 app.post('/help-request', async (req, res) => {
@@ -610,7 +673,11 @@ app.post('/help-request', async (req, res) => {
 ID заявки: ${helpRequest._id}
             `;
 
-            bot.sendMessage(process.env.TELEGRAM_ADMIN_CHAT_ID, message);
+            try {
+                await bot.sendMessage(process.env.TELEGRAM_ADMIN_CHAT_ID, message);
+            } catch (telegramError) {
+                console.error('Ошибка отправки Telegram сообщения:', telegramError.message);
+            }
         }
 
         res.json({
@@ -683,7 +750,6 @@ app.patch('/help-requests/:id', async (req, res) => {
             request.rejectionReason = rejectionReason || 'Не указана';
         }
 
-        // Если одобрено - переводим деньги
         if (status === 'approved') {
             const totalDonations = await Donation.aggregate([
                 { $group: { _id: null, total: { $sum: '$amount' } } }
@@ -712,7 +778,6 @@ app.patch('/help-requests/:id', async (req, res) => {
                 user.balance += request.amount;
                 await user.save();
 
-                // 🆕 Отправляем уведомление пользователю
                 if (user.telegramChatId && bot) {
                     const userMessage = `
 ✅ Ваша заявка на помощь одобрена!
@@ -729,7 +794,7 @@ app.patch('/help-requests/:id', async (req, res) => {
                     try {
                         await bot.sendMessage(user.telegramChatId, userMessage);
                     } catch (telegramErr) {
-                        console.error('Ошибка отправки Telegram:', telegramErr);
+                        console.error('Ошибка отправки Telegram:', telegramErr.message);
                     }
                 }
             }
@@ -737,7 +802,6 @@ app.patch('/help-requests/:id', async (req, res) => {
             request.status = 'completed';
             request.completedAt = new Date();
         } else {
-            // 🆕 Отправляем уведомление об отклонении
             const user = await User.findById(request.userId);
             if (user && user.telegramChatId && bot) {
                 const userMessage = `
@@ -753,20 +817,23 @@ app.patch('/help-requests/:id', async (req, res) => {
                 try {
                     await bot.sendMessage(user.telegramChatId, userMessage);
                 } catch (telegramErr) {
-                    console.error('Ошибка отправки Telegram:', telegramErr);
+                    console.error('Ошибка отправки Telegram:', telegramErr.message);
                 }
             }
         }
 
         await request.save();
 
-        // Уведомление админу
         if (bot && process.env.TELEGRAM_ADMIN_CHAT_ID) {
             const statusText = status === 'approved' ? '✅ ОДОБРЕНА' : '❌ ОТКЛОНЕНА';
-            bot.sendMessage(
-                process.env.TELEGRAM_ADMIN_CHAT_ID,
-                `${statusText}\n\nЗаявка ${request._id}\nПользователь: ${request.userName}\nСумма: ${request.amount.toLocaleString()} сум`
-            );
+            try {
+                await bot.sendMessage(
+                    process.env.TELEGRAM_ADMIN_CHAT_ID,
+                    `${statusText}\n\nЗаявка ${request._id}\nПользователь: ${request.userName}\nСумма: ${request.amount.toLocaleString()} сум`
+                );
+            } catch (telegramErr) {
+                console.error('Ошибка отправки Telegram админу:', telegramErr.message);
+            }
         }
 
         res.json({
@@ -781,10 +848,11 @@ app.patch('/help-requests/:id', async (req, res) => {
 });
 
 // ========================================
-// 🤖 TELEGRAM BOT
+// TELEGRAM BOT - ТОЛЬКО ДЛЯ DEVELOPMENT
 // ========================================
 
-if (bot) {
+// Проверяем, что мы в development и polling включен
+if (bot && (!process.env.NODE_ENV || process.env.NODE_ENV === 'development') && !process.env.RENDER) {
     let currentRequestIndex = 0;
     let pendingRequests = [];
 
@@ -793,11 +861,9 @@ if (bot) {
         return pendingRequests;
     };
 
-    // Команда /start
     bot.onText(/\/start/, async (msg) => {
         const chatId = msg.chat.id;
 
-        // Проверяем, является ли это админ
         if (chatId.toString() === process.env.TELEGRAM_ADMIN_CHAT_ID) {
             bot.sendMessage(chatId, `
 🤖 Админ-панель системы пожертвований
@@ -808,7 +874,6 @@ if (bot) {
 /help - Помощь
             `);
         } else {
-            // Обычный пользователь - предлагаем привязать аккаунт
             bot.sendMessage(chatId, `
 👋 Добро пожаловать!
 
@@ -827,7 +892,6 @@ if (bot) {
         }
     });
 
-    // Команда /requests
     bot.onText(/\/requests/, async (msg) => {
         const chatId = msg.chat.id;
 
@@ -847,7 +911,6 @@ if (bot) {
         showRequest(chatId);
     });
 
-    // Команда /stats
     bot.onText(/\/stats/, async (msg) => {
         const chatId = msg.chat.id;
 
@@ -910,12 +973,11 @@ ID заявки: ${request._id}
 ✅ /approve - Одобрить
 ❌ /reject - Отклонить
 ➡ /next - Следующая заявка
-    `;
+        `;
 
         bot.sendMessage(chatId, message);
     };
 
-    // Одобрение заявки
     bot.onText(/\/approve/, async (msg) => {
         const chatId = msg.chat.id;
         if (chatId.toString() !== process.env.TELEGRAM_ADMIN_CHAT_ID) return;
@@ -951,7 +1013,6 @@ ID заявки: ${request._id}
         }
     });
 
-    // Отклонение заявки
     bot.onText(/\/reject/, async (msg) => {
         const chatId = msg.chat.id;
         if (chatId.toString() !== process.env.TELEGRAM_ADMIN_CHAT_ID) return;
@@ -983,7 +1044,6 @@ ID заявки: ${request._id}
         }
     });
 
-    // Переход к следующей заявке
     bot.onText(/\/next/, async (msg) => {
         const chatId = msg.chat.id;
         if (chatId.toString() !== process.env.TELEGRAM_ADMIN_CHAT_ID) return;
@@ -991,10 +1051,33 @@ ID заявки: ${request._id}
         currentRequestIndex++;
         showRequest(chatId);
     });
+
+    console.log('🤖 Telegram bot команды зарегистрированы');
 }
+
+// ========================================
+// GRACEFUL SHUTDOWN
+// ========================================
+process.on('SIGTERM', async () => {
+    console.log('⏹️  SIGTERM получен. Останавливаем бота...');
+    if (bot && bot.isPolling()) {
+        await bot.stopPolling();
+    }
+    process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+    console.log('⏹️  SIGINT получен. Останавливаем бота...');
+    if (bot && bot.isPolling()) {
+        await bot.stopPolling();
+    }
+    process.exit(0);
+});
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
     console.log(`🌐 Сервер запущен на порту ${PORT}`);
+    console.log(`📍 URL: https://korzinka-server.onrender.com`);
+    console.log(`📘 Swagger: https://korzinka-server.onrender.com/api-docs`);
 });

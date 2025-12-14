@@ -17,6 +17,8 @@
     "express": "^5.2.1",
     "mongoose": "^9.0.1",
     "multer": "^2.0.2",
-    "node-telegram-bot-api": "^0.67.0"
+    "node-telegram-bot-api": "^0.67.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   }
 }
