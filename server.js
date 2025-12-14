@@ -1170,16 +1170,18 @@ ID заявки: ${request._id}
         if (!bot) return;
 
         // Генерируем кнопку Web App
-        const webAppUrl = 'https://korzinka-server.onrender.com/webapp/topup'; // твой фронтенд
-        const inlineKeyboard = {
+        const webAppUrl = 'https://korzinka-server.onrender.com/webapp/admin/index.html'; // твой WebApp
+
+        bot.sendMessage(chatId, 'Открыть админ-панель:', {
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: "💳 Пополнить баланс", web_app: { url: webAppUrl } }
+                        { text: "🛠 Админ-панель", web_app: { url: webAppUrl } }
                     ]
                 ]
             }
-        };
+        });
+
 
         await bot.sendMessage(chatId, 'Выберите сумму для пополнения:', inlineKeyboard);
     });
