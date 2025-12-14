@@ -879,6 +879,38 @@ app.patch('/help-requests/:id', async (req, res) => {
     }
 });
 
+app.get('/webapp/topup', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <title>Пополнение баланса</title>
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    </head>
+    <body>
+        <h1>Пополнение баланса</h1>
+        <p>Выберите сумму:</p>
+        <button onclick="sendAmount(10000)">10,000 сум</button>
+        <button onclick="sendAmount(20000)">20,000 сум</button>
+        <button onclick="sendAmount(50000)">50,000 сум</button>
+        <button onclick="sendAmount(100000)">100,000 сум</button>
+        <button onclick="sendAmount(200000)">200,000 сум</button>
+
+        <script>
+            const tg = window.Telegram.WebApp;
+
+            function sendAmount(amount) {
+                tg.sendData(JSON.stringify({ amount }));
+                tg.close(); // Закрываем Web App после выбора
+            }
+        </script>
+    </body>
+    </html>
+    `);
+});
+
+
 // ========================================
 // TELEGRAM BOT - ТОЛЬКО ДЛЯ DEVELOPMENT
 // ========================================
@@ -1115,6 +1147,47 @@ ID заявки: ${request._id}
         currentRequestIndex++;
         showRequest(chatId);
     });
+
+    bot.onText(/\/topup/, async (msg) => {
+        const chatId = msg.chat.id;
+
+        if (!bot) return;
+
+        // Генерируем кнопку Web App
+        const webAppUrl = 'https://korzinka-server.onrender.com/webapp/topup'; // твой фронтенд
+        const inlineKeyboard = {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "💳 Пополнить баланс", web_app: { url: webAppUrl } }
+                    ]
+                ]
+            }
+        };
+
+        await bot.sendMessage(chatId, 'Выберите сумму для пополнения:', inlineKeyboard);
+    });
+
+    bot.on('web_app_data', async (ctx) => {
+        const data = JSON.parse(ctx.update.message.web_app_data.data);
+        const amount = data.amount;
+
+        // Идентифицируем пользователя
+        const chatId = ctx.chat.id;
+        const user = await User.findOne({ telegramChatId: chatId });
+
+        if (!user) {
+            return bot.sendMessage(chatId, '❌ Вы не привязали Telegram к аккаунту.');
+        }
+
+        // Можно создать "заявку на пополнение" или сразу добавить на баланс
+        user.balance += amount;
+        await user.save();
+
+        bot.sendMessage(chatId, `✅ Баланс успешно пополнен на ${amount.toLocaleString()} сум.\nТекущий баланс: ${user.balance.toLocaleString()} сум`);
+    });
+
+
 
     console.log('🤖 Telegram bot команды зарегистрированы');
 }
