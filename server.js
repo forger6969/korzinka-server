@@ -972,16 +972,6 @@ if (bot) {
         }
     });
 
-    await bot.setChatMenuButton({
-        chat_id: chatId, // можно убрать, тогда будет глобально
-        menu_button: {
-            type: "web_app",
-            text: "Open",
-            web_app: {
-                url: "https://korzinka-server.onrender.com/webapp/admin/index.html"
-            }
-        }
-    });
 
 
     bot.onText(/\/requests/, async (msg) => {
